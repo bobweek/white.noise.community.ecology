@@ -2,6 +2,7 @@
 
 @with_kw mutable struct population
     x::Vector{Float64}  # trait values
+    LT::Vector{Float64} # life times (drawn iid from Exp(1) distr)
     N::Int64            # poulation size
     x̄::Float64          # mean trait
     σ²::Float64         # phenotypic variance
@@ -16,6 +17,7 @@ end
 @with_kw mutable struct community
     S::Int64                   # number of species
     x::Vector{Vector{Float64}} # trait values
+    LT::Vector{Float64}        # life times (drawn iid from Exp(1) distr)
     g::Vector{Vector{Float64}} # breeding values
     N::Vector{Int64}           # population sizes
     n::Vector{Int64}           # index of rescaled sequence
@@ -33,7 +35,7 @@ end
     V::Vector{Float64}         # variances in reproductive output
 end
 
-# update for community
+# update for community with non-overlapping generations
 function comm_update(X)
 
     @unpack S, x, N, x̄, σ², R, a, θ, c, w, U, μ, V = X
@@ -118,7 +120,7 @@ function comm_update(X)
 
 end
 
-# rescaled update for community
+# rescaled update for community with non-overlapping generations
 function rescaled_update(X)
 
     @unpack S, x, N, x̄, σ², R, a, θ, c, w, U, μ, V = X
@@ -203,7 +205,8 @@ function rescaled_update(X)
 
 end
 
-# update for community using lower bound on fitness
+# update for community with non-overlapping generations
+# using lower bound on fitness
 function update_lower(X)
 
     @unpack S, x, N, x̄, σ², R, a, θ, c, w, U, μ, V = X
@@ -288,7 +291,8 @@ function update_lower(X)
 
 end
 
-# rescaled update for community using lower bound on fitness
+# rescaled update for community with non-overlapping gnerations
+#  using lower bound on fitness
 function rescaled_lower(X)
 
     @unpack S, x, g, N, n, x̄, σ², G, R, a, θ, c, w, U, η, μ, V = X
@@ -359,6 +363,91 @@ function rescaled_lower(X)
 
     Xₚ = community(S=S,x=xₚ,g=gₚ,N=Nₚ,n=n,x̄=x̄ₚ,σ²=σₚ²,G=Gₚ,R=R,
         a=a,θ=θ,c=c,w=w,U=U,η=η,μ=μ,V=V)
+
+    return Xₚ
+
+end
+
+# update for community with overlapping generations
+function comm_update(X)
+
+    @unpack S, x, LT, N, x̄, σ², R, a, θ, c, w, U, μ, V = X
+
+    # creates array of offspring trait values
+    # first index is species
+    # second index is individual
+    xₚ = fill(zeros(0),S)
+
+    for i in 1:S
+
+        W = fill(0,N[i])
+
+        for j in 1:N[i]
+
+            #
+            # mean fitness of individual j in species i
+            # this follows exactly from SM §5.6
+            #
+
+            # container for aggregating effects of competition
+            B = 0.0
+
+            # collect effects of competition with other individuals
+            # within the same population
+            for k in filter(x -> x≠j, 1:N[i])
+                B += U[i]^2*exp( (x[i][j] - x[i][k])^2 / (4*w[i]) ) / √(4*π*w[i])
+            end
+
+            # collect effects of competition with other individuals
+            # in other populations
+            for k in filter(x -> x≠i, 1:S)
+                for l in 1:N[k]
+                    B += U[i]*U[k]*exp( (x[i][j] - x[k][l])^2 / (2*(w[i]+w[k])) ) / √(2*π*(w[i]+w[k]))
+                end
+            end
+
+            w = exp( R[i] - a[i]*(θ[i]-x[i][j])^2/2.0 - c[i]*B )
+
+            # parameterizing the NegativeBinomial
+            q = w/V
+            s = w^2/(V-w)
+
+            # draw random number of offspring
+            W[j] = rand( NegativeBinomial( s, q ), 1)[1]
+
+        end
+
+        # total number of offspring
+        Nₚ = sum(W)
+
+        # container for locations of offspring
+        xₚ = fill(0.0,Nₚ)
+
+        # keeps track of which individual is being born
+        ct = 0
+
+        # loop throug parents
+        for j in 1:N[i]
+
+            # birth each offspring
+            for k in 1:W[j]
+
+                # consider next individual
+                ct += 1
+
+                # draw random trait for this individual
+                xₚ[ct] = rand( Normal( x[i,j], √μ[i] ), 1)[1]
+
+            end
+
+        end
+
+        x̄ₚ[i] = mean(xₚ)
+        σₚ²[i]= var(xₚ)
+
+    end
+
+    Xₚ = community(x=xₚ,N=Nₚ,x̄=x̄ₚ,σ²=σₚ²,R=R,a=a,θ=θ,c=c,μ=μ,V=V)
 
     return Xₚ
 

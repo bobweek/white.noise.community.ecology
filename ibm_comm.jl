@@ -1,7 +1,7 @@
 using Parameters, Statistics, Random, LinearAlgebra, Distributions,
 	StatsBase, StatsPlots, Plots, DataFrames, CSV, Optim
 
-include("/home/bob/Research/Branching Brownian Motion/bbm_functions_structs.jl")
+include("/home/bb/Gits/white.noise.community.ecology/ibm_functions_structs.jl")
 
 ########################################################
 #                                                      #
@@ -12,10 +12,10 @@ include("/home/bob/Research/Branching Brownian Motion/bbm_functions_structs.jl")
 ########################################################
 
 # parameter values
-S = 1
+S = 5
 w = fill(0.1, S)  # niche breadths
 U = fill(1.0, S)  # total niche use
-c = fill(0.002,S) # strengths of competition
+c = fill(1e-5,S) # strengths of competition
 Ω = sum(U)        # niche use scaling
 η = fill(1e-3, S) # environmental variances
 μ = fill(1e-5, S) # mutation rates

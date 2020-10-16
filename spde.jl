@@ -4,10 +4,13 @@
 # http://www.stochasticlifestyle.com/solving-systems-stochastic-pdes-using-gpus-julia/
 #
 
+# load in some libraries
 using OrdinaryDiffEq, StochasticDiffEq, RecursiveArrayTools, LinearAlgebra, Plots, Parameters
 
+# defines the resolution of the mesh used to approximate the solution
 const N = 100
 
+# defines the mesh
 const Mx = Tridiagonal([1.0 for i in 1:N-1],[-2.0 for i in 1:N],[1.0 for i in 1:N-1])
 
 # data type that holds model parameters
@@ -21,7 +24,7 @@ const Mx = Tridiagonal([1.0 for i in 1:N-1],[-2.0 for i in 1:N],[1.0 for i in 1:
     X::Vector{Float64}	# variance of reproductive output
 end
 
-# Define the constants for the PDE
+# Define the parameter values used
 θ = 30.0
 ω = 100.0
 c = 0.001
@@ -87,3 +90,5 @@ for i in 1:length(time)
     end
 end
 contour(time,X,abun,fill = true)
+
+savefig("/home/bb/Gits/white.noise.community.ecology/spde.png")
