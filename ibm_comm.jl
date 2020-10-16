@@ -1,3 +1,21 @@
+################################################################################
+##
+## AUTHOR: Bob Week
+##
+## DATE: 10/16/2020
+##
+## In this script we simulate an individual-based model for several interacting
+## species to compare with our results using population-level models.
+##
+## This script depends on another script called "ibm_functions_structs.jl".
+## In that script we provide definitions of data structures for model parameters
+## and for state variables. In that script we also define methods for iterating
+## the simulation. With all the gory details located elsewhere, we can focus
+## this script on simulating the model for a specified duration.
+##
+################################################################################
+
+
 using Parameters, Statistics, Random, LinearAlgebra, Distributions,
 	StatsBase, StatsPlots, Plots, DataFrames, CSV, Optim
 

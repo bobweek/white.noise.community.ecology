@@ -1,14 +1,33 @@
+################################################################################
+##
+## AUTHOR: Bob Week
+##
+## DATE: 10/16/2020
+##
+## In this script we simulate an individual-based model for a single species
+## and illustrate what happens in the diffusion limit.
+##
+## This script depends on another script called "ibm_functions_structs.jl".
+## In that script we provide definitions of data structures for model parameters
+## and for state variables. In that script we also define methods for iterating
+## the simulation. With all the gory details located elsewhere, we can focus
+## this script on simulating the model for a specified duration.
+##
+################################################################################
+
 using Parameters, Statistics, Random, LinearAlgebra, Distributions,
 	StatsBase, StatsPlots, Plots, DataFrames, CSV, Optim, KernelDensity,
 	QuadGK, HypothesisTests
 
 include("/home/bb/Gits/branching.brownian.motion.and.spde/bbm_functions_structs.jl")
 
-#######################################################
-#                                                     #
-# a branching Brownian motion for a single population #
-#                                                     #
-#######################################################
+########################################################
+#
+#  An individual-based model for the entire community
+#
+#  Used to illustrate the diffusion approximation
+#
+########################################################
 
 # parameter values
 w = 0.1  # niche breadths

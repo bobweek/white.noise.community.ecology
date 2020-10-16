@@ -1,3 +1,14 @@
+################################################################################
+##
+## AUTHOR: Bob Week
+##
+## DATE: 10/16/2020
+##
+## In this script we provide definitions of data structures for model parameters
+## and for state variables used in our simulations of individual-based models.
+##
+################################################################################
+
 # data type that holds population and parameters
 
 @with_kw mutable struct population

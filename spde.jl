@@ -1,8 +1,22 @@
-#
-# Adapted from
-#
-# http://www.stochasticlifestyle.com/solving-systems-stochastic-pdes-using-gpus-julia/
-#
+########################################################################################
+##
+## AUTHOR: Bob Week
+##
+## DATE: 10/16/2020
+##
+## In this script we demonstrate how to solve SPDE in Julia.
+## After defining the data structure that carries the model Parameters
+## we define the deterministic (f) component and stochastic (g) component
+## of the model. We then solve the deterministic PDE before solving the SPDE.
+## The model tracks the evolution of the density of abundance across trait space
+## for a single species in response to logistic growth, abiotic stabilizing
+## selection and demographic stochasticity.
+##
+## Adapted from:
+##
+## http://www.stochasticlifestyle.com/solving-systems-stochastic-pdes-using-gpus-julia/
+##
+########################################################################################
 
 # load in some libraries
 using OrdinaryDiffEq, StochasticDiffEq, RecursiveArrayTools, LinearAlgebra, Plots, Parameters
@@ -39,7 +53,10 @@ pars = ModelParameters(μ=μ, R=R, a=a, θ=θ, c=c, V=V, X=X)
 # Define the initial condition as normal arrays
 u0 = 1000*exp.(-(X.-50).^2 / (2*ω))/√(2*π*ω)
 
-# Define the discretized PDE as an ODE function
+#######################################################
+### Define the model
+#######################################################
+
 function f(u,p,t)
     @unpack μ, R, a, θ, c = p
     du = 0.5*μ*Mx*u + u.*(R .- 0.5*a*(X.-θ).^2 .- c*norm(u,1))
