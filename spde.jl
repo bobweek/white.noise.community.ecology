@@ -19,7 +19,7 @@
 ########################################################################################
 
 # load in some libraries
-using StochasticDiffEq, LinearAlgebra, Plots, Parameters
+using OrdinaryDiffEq, StochasticDiffEq, LinearAlgebra, Plots, Parameters
 
 # defines the resolution of the mesh used to approximate the solution
 const N = 100
@@ -86,15 +86,13 @@ end
 prob = ODEProblem(f,u0,(0.0,50.0),pars)
 sol = solve(prob,ROCK2())
 
-time = sol.t
-
-abun = zeros(N,length(time))
-for i in 1:length(time)
+abun = zeros(N,length(sol.t))
+for i in 1:length(sol.t)
     for j in 1:N
         abun[j,i] = sol.u[i][j]
     end
 end
-contour(time,X,abun,fill = true)
+contour(sol.t,X,abun,fill = true)
 
 #######################################################
 ### Solve the SPDE
@@ -103,14 +101,12 @@ contour(time,X,abun,fill = true)
 prob2 = SDEProblem(f,g,u0,(0.0,50.0),pars)
 sol = solve(prob2,SOSRI())
 
-time = sol.t
-
-abun = zeros(N,length(time))
-for i in 1:length(time)
+abun = zeros(N,length(sol.t))
+for i in 1:length(sol.t)
     for j in 1:N
         abun[j,i] = sol.u[i][j]
     end
 end
-contour(time,X,abun,fill = true)
+contour(sol.t,X,abun,fill = true)
 
 savefig("/home/bb/Gits/white.noise.community.ecology/spde.png")
