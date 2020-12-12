@@ -16,10 +16,9 @@
 ################################################################################
 
 using Parameters, Statistics, Random, LinearAlgebra, Distributions,
-	StatsBase, StatsPlots, Plots, DataFrames, CSV, Optim, KernelDensity,
-	QuadGK, HypothesisTests
+	StatsBase, StatsPlots, Plots, DataFrames, CSV, Optim
 
-include("/home/bb/Gits/branching.brownian.motion.and.spde/bbm_functions_structs.jl")
+include("/home/bb/Gits/white.noise.community.ecology/ibm_functions_structs.jl")
 
 ########################################################
 #
@@ -138,46 +137,3 @@ plot(resc_time,Nₕ[1,:]./n)
 plot(resc_time,x̄ₕ[1,:]./√n)
 plot(resc_time,σ²ₕ[1,:]./n)
 
-histogram(Xₕ[T].x[1])
-
-# our approximate
-phen_dist = kde(Xₕ[T].x[1])
-
-# expected
-x̄_exp = θ
-σ²_exp = √(μ/a)
-
-# integral of kernel density estimate
-one = quadgk(x->pdf(phen_dist,x), -Inf, Inf, rtol=1e-3)[1]
-
-# plotting the approximate versus expected
-plot(range(-15,15),x->pdf(phen_dist,x)/one)
-plot!(x->pdf(Normal(x̄_exp,√σ²_exp),x))
-
-# define culmulative density functions (cdf's)
-function phen_cdf(x,X)
-	n = length(X)
-	num = length(findall(X.<=x))
-	return Float64(num) / Float64(n)
-end
-
-# plot the cdf's
-plot(range(-15,15),x->phen_cdf(x,Xₕ[T].x))
-plot!(x->cdf(Normal(x̄_exp,√σ²_exp),x))
-
-# calculate kolmogorov statistic
-function Kst_fct(x)
-	abs( cdf(Normal(x̄_exp,√σ²_exp),x) - phen_cdf(x,Xₕ[T].x) )
-end
-findKst = maximize(Kst_fct,-20,20)
-KS_stat = -findKst.res.minimum
-
-cdf(KSOneSided(length(Xₕ[T].x)),KS_stat)
-
-plot(range(0,1),x->cdf(KSOneSided(length(Xₕ[T].x)),x))
-
-function KSONEcdf(x)
-	return cdf(KSOneSided(length(Xₕ[T].x)),x)
-end
-
-plot(range(0,.,length=1000),y->KSONEcdf(y))

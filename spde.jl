@@ -19,10 +19,11 @@
 ########################################################################################
 
 # load in some libraries
-using OrdinaryDiffEq, StochasticDiffEq, RecursiveArrayTools, LinearAlgebra, Plots, Parameters
+using StochasticDiffEq, LinearAlgebra, Plots, Parameters
 
 # defines the resolution of the mesh used to approximate the solution
 const N = 100
+X = Vector([i for i in 1:N])
 
 # defines the mesh
 const Mx = Tridiagonal([1.0 for i in 1:N-1],[-2.0 for i in 1:N],[1.0 for i in 1:N-1])
@@ -35,31 +36,35 @@ const Mx = Tridiagonal([1.0 for i in 1:N-1],[-2.0 for i in 1:N],[1.0 for i in 1:
     θ::Float64	# phenotypic optima
     c::Float64	# strength of competition
     V::Float64	# variance of reproductive output
-    X::Vector{Float64}	# variance of reproductive output
+    X::Vector{Float64}	# trait values
 end
 
-# Define the parameter values used
+# parameter values
 θ = 30.0
-ω = 100.0
 c = 0.001
 a = 0.001
 μ = 0.1
 V = 1
 R = 1
-X = Vector([i for i in 1:N])
 
 pars = ModelParameters(μ=μ, R=R, a=a, θ=θ, c=c, V=V, X=X)
 
-# Define the initial condition as normal arrays
-u0 = 1000*exp.(-(X.-50).^2 / (2*ω))/√(2*π*ω)
+# initial condition
+ω₀ = 100.0
+u0 = 1000*exp.(-(X.-50).^2 / (2*ω₀))/√(2*π*ω₀)
 
 #######################################################
 ### Define the model
 #######################################################
 
 function f(u,p,t)
-    @unpack μ, R, a, θ, c = p
+    @unpack μ, R, a, θ, c, X = p
     du = 0.5*μ*Mx*u + u.*(R .- 0.5*a*(X.-θ).^2 .- c*norm(u,1))
+    for i in 1:length(X)
+        if u[i]<0           # if the solution becomes negative
+            du[i] = 0.01    # then quickly restore it towards zero
+        end
+    end
     return(du)
 end
 
@@ -67,7 +72,7 @@ function g(u,p,t)
     @unpack V, X = p
     du = zeros(length(X))
     for i in 1:length(X)
-        if u[i]>0
+        if u[i]>=0
             du[i] = √(V*u[i])
         end
     end

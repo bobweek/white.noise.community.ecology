@@ -60,10 +60,6 @@ end
 #                             #
 ###############################
 
-#
-# untransformed
-#
-
 # deterministic drift  (not to be confused with random genetic drift)
 function f(u,p,t)
 
@@ -89,6 +85,7 @@ function f(u,p,t)
 
   for i = 1:S
 
+    # accumulate effects on mean trait
     B = 0.0
     for j = 1:S
       B += N[j] * b[i,j] * (x[j]-x[i]) * √( b[i,j] / (2.0*π) ) *
@@ -97,15 +94,15 @@ function f(u,p,t)
 
     dx[i] =  a[i] * G[i] * ( θ[i]-x[i] ) - c[i] * G[i] * B
 
+    # accumulate effects on additive genetic variance
     B = 0.0
     for j = 1:S
       B += N[j] * b[i,j] * (1.0 - b[i,j] * ( x[i]-x[j] )^2) *
 	  	√( b[i,j] / (2.0*π) ) * exp( -b[i,j] * ( x[i]-x[j] )^2 / 2.0 )
     end
+	  B += N[i]*b[i,i]*√(b[i,i]/(2.0*π))
 
-	B += N[i]*b[i,i]*√(b[i,i]/(2.0*π))
-
-    dG[i] = μ[i] + ( c[i]*B - a[i] ) * G[i]^2 - V[i] * G[i] / N[i]
+    dG[i] = μ[i] + ( c[i]*B - a[i] ) * G[i]^2 - V[i] * G[i] / (N[i]+1.0)
 
     B = 0.0
     for j = 1:S
@@ -113,8 +110,7 @@ function f(u,p,t)
 	  	exp( -b[i,j] * ( x[j]-x[i] )^2 / 2.0 )
     end
 
-    dN[i] = (R[i] - a[i]*(  ( θ[i] - x[i] )^2 + G[i] + η[i]  )/2.0 -
-		c[i] * B)*N[i]
+    dN[i] = (R[i] - a[i]*(  ( θ[i] - x[i] )^2 + G[i] + η[i]  )/2.0 - c[i] * B)*N[i]
 
   end
 
@@ -133,18 +129,6 @@ function g(u,p,t)
   # unpack model parameters
   @unpack S, w, U, η, c, a, μ, V, R, θ = p
 
-  # unpack model parameters
-#  S::Int = p[1]
-#  w      = p[(0*S+2):(1*S+1)]
-#  U      = p[(1*S+2):(2*S+1)]
-#  η      = p[(2*S+2):(3*S+1)]
-#  c      = p[(3*S+2):(4*S+1)]
-#  a      = p[(4*S+2):(5*S+1)]
-#  μ      = p[(5*S+2):(6*S+1)]
-#  v      = p[(6*S+2):(7*S+1)]
-#  r      = p[(7*S+2):(8*S+1)]
-#  θ      = p[(8*S+2):(9*S+1)]
-
   # unpack model variables
   x = u[(0*S+1):(1*S)] # mean traits
   G = u[(1*S+1):(2*S)] # additive genetic variances
@@ -157,11 +141,18 @@ function g(u,p,t)
 
   for i = 1:S
 
-  	dN[i] = √( V[i] * N[i] )
-
-    dx[i] = √( V[i] * G[i] / N[i] )
-
-    dG[i] = G[i] * √( 2.0 * V[i] / N[i] )
+    if N[i] > 0.0 && G[i] > 0.0
+      dN[i] = √( V[i] * N[i] )
+      dx[i] = √( V[i] * G[i] / (N[i]+1.0) )
+      dG[i] = G[i] * √( 2.0 * V[i] / (N[i]+1.0) )
+    elseif N[i] < 0.0
+      N[i] = 0.0
+    elseif G[i] < 0.0
+      G[i] = 0.0
+    else N[i] < 0.0 && G[i] < 0.0
+      N[i] = 0.0
+      G[i] = 0.0
+    end
 
   end
 
