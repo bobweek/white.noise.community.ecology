@@ -13,24 +13,23 @@
 end
 
 # data type that holds model parameters
-@with_kw mutable struct ModelParameters
+@with_kw mutable struct SDEModelParameters
 	S::Int64            # species richness
-	w::Vector{Float64}  # niche breadths, always zero for now...
+	λ::Vector{Float64}  # niche breadths, alλays zero for noλ...
 	U::Vector{Float64}  # total niche use
-	η::Vector{Float64}  # segregation variances
-	c::Vector{Float64}	# strengths of competition
+	E::Vector{Float64}  # segregation variances
+	c::Matrix{Float64}	# strengths of competition
 	a::Vector{Float64}	# strengths of abiotic selection
 	μ::Vector{Float64}	# mutation rates
 	V::Vector{Float64}	# variance of reproductive output
-	R::Vector{Float64}	# intrinsic rates of growth
+	R::Vector{Float64}	# intrinsic rates of groλth
 	θ::Vector{Float64}	# phenotypic optima
-	Ω::Float64        	# total niche-use scaling
 end
 
-# data type that holds known parameters
+# data type that holds knoλn parameters
 @with_kw mutable struct FixedParameters
 	S::Int64            # species richness
-	w::Vector{Float64}  # niche breadths, always zero for now...
+	λ::Vector{Float64}  # niche breadths, alλays zero for noλ...
 	U::Vector{Float64}  # total niche use
 	x̃::Vector{Float64}  # initial condition (≈ deterministic equilibrium)
 	ε::Float64          # convergence threshold
@@ -41,14 +40,14 @@ end
 	bins::Int64					# number of bins to use for histograms
 end
 
-# data type that holds parameters we need to estimate
+# data type that holds parameters λe need to estimate
 @with_kw mutable struct LooseParameters
-	η::Float64         # segregation variances
+	E::Float64         # segregation variances
 	c::Float64         # strengths of competition
 	a::Float64         # strengths of abiotic selection
 	μ::Float64         # mutation rates
 	V::Float64         # variance of reproductive output
-	R::Float64         # intrinsic rates of growth
+	R::Float64         # intrinsic rates of groλth
 	θ::Float64         # phenotypic optima
 	Ω::Float64         # total niche-use scaling
 end
@@ -61,10 +60,10 @@ end
 ###############################
 
 # deterministic drift  (not to be confused with random genetic drift)
-function f(u,p,t)
+function fsde(u,p,t)
 
   # unpack model parameters
-  @unpack S, w, U, η, c, a, μ, V, R, θ = p
+  @unpack S, λ, U, E, c, a, μ, V, R, θ = p
 
   # unpack model variables
   x = u[(0*S+1):(1*S)] # mean traits
@@ -76,41 +75,40 @@ function f(u,p,t)
   dG = zeros(S)
   dN = zeros(S)
 
-  b = Array{Float64,2}(undef,S,S)
+  # sensitivity composite-parameters
+  b = zeros(S,S)
   for i = 1:S
     for j = 1:S
-      b[i,j] = 1 / ( w[i] + w[j] + G[i] + G[j] + η[i] + η[j] )
+      b[i,j] = 1.0 / ( λ[i] + λ[j] + G[i] + G[j] + E[i] + E[j] )
     end
   end
 
   for i = 1:S
 
     # accumulate effects on mean trait
-    B = 0.0
+    Bₓ = 0.0
     for j = 1:S
-      B += N[j] * b[i,j] * (x[j]-x[i]) * √( b[i,j] / (2.0*π) ) *
-	  	exp( -b[i,j] * ( x[j]-x[i] )^2 / 2.0 )
+      Bₓ += c[i,j] * N[j] * U[i] * U[j] * b[i,j] * (x[j]-x[i]) * √( b[i,j] / (2.0*π) ) * exp( -b[i,j] * ( x[j]-x[i] )^2 / 2.0 )
     end
 
-    dx[i] =  a[i] * G[i] * ( θ[i]-x[i] ) - c[i] * G[i] * B
+    dx[i] =  a[i] * G[i] * ( θ[i]-x[i] ) - G[i] * Bₓ
 
     # accumulate effects on additive genetic variance
-    B = 0.0
+    Bg = 0.0
     for j = 1:S
-      B += N[j] * b[i,j] * (1.0 - b[i,j] * ( x[i]-x[j] )^2) *
-	  	√( b[i,j] / (2.0*π) ) * exp( -b[i,j] * ( x[i]-x[j] )^2 / 2.0 )
+      Bg += c[i,j] * N[j] * U[i] * U[j] * b[i,j] * (1.0 - b[i,j] * ( x[i]-x[j] )^2) * √( b[i,j] / (2.0*π) ) * exp( -b[i,j] * ( x[i]-x[j] )^2 / 2.0 )
     end
-	  B += N[i]*b[i,i]*√(b[i,i]/(2.0*π))
+	  Bg -= 0.5*c[i,i] * N[i] * U[i]^2 * b[i,i] * √(b[i,i]/(2.0*π))
 
-    dG[i] = μ[i] + ( c[i]*B - a[i] ) * G[i]^2 - V[i] * G[i] / (N[i]+1.0)
+    dG[i] = μ[i] + ( Bg - a[i] ) * G[i]^2 - V[i] * G[i] / N[i]
 
-    B = 0.0
+    # accumulate effects on abundance
+    Bₙ = 0.0
     for j = 1:S
-      B += N[j] * √( b[i,j] / (2.0*π) ) *
-	  	exp( -b[i,j] * ( x[j]-x[i] )^2 / 2.0 )
+      Bₙ += c[i,j] * N[j] * U[i] * U[j] * √( b[i,j] / (2.0*π) ) *  exp( -b[i,j] * ( x[j]-x[i] )^2 / 2.0 )
     end
 
-    dN[i] = (R[i] - a[i]*(  ( θ[i] - x[i] )^2 + G[i] + η[i]  )/2.0 - c[i] * B)*N[i]
+    dN[i] = (R[i] - a[i]*( ( θ[i] - x[i] )^2 + G[i] + E[i] )/2.0 - Bₙ)*N[i]
 
   end
 
@@ -123,11 +121,11 @@ function f(u,p,t)
 end
 
 # diffusion
-function g(u,p,t)
+function gsde(u,p,t)
 
 
   # unpack model parameters
-  @unpack S, w, U, η, c, a, μ, V, R, θ = p
+  @unpack S, λ, U, E, c, a, μ, V, R, θ = p
 
   # unpack model variables
   x = u[(0*S+1):(1*S)] # mean traits
@@ -170,14 +168,14 @@ function n_ints(S)
 
 end
 
-function rf_ρ(x,σ²,s,U,w)
+function rf_ρ(x,σ²,s,U,λ)
 
   S = length(x)
   M = zeros(S,S)
 
   for i in 1:S
     for j in 1:S
-	    b = 1/(w[i]+w[j]+σ²[i]+σ²[j])
+	    b = 1/(λ[i]+λ[j]+σ²[i]+σ²[j])
       if i ≠ j
 	      M[i,j] = U[i] * U[j] * s[i] * s[j] * sqrt(b/(2*π)) * exp(-b*(x[i]-x[j])^2/2)
       end
@@ -260,7 +258,7 @@ function findEcolParsₚ(qₚ,Δ,p)
 	#
 	S = convert(Int64, length(qₚ)/2)
 	#
-	w  = qₚ[(0+1):(1*S)]
+	λ  = qₚ[(0+1):(1*S)]
   	U  = qₚ[(S+1):(2*S)]
 	#
 	x̄  = Δ[1][:,1]
@@ -268,7 +266,7 @@ function findEcolParsₚ(qₚ,Δ,p)
 	s  = Δ[1][:,3]
 	#
 	ρₒ = Δ[2]
-	ρₚ = rf_ρ(x̄,σ²,s,U,w)
+	ρₚ = rf_ρ(x̄,σ²,s,U,λ)
 	ρₚ = LinearAlgebra.normalize( vect_ρ(ρₚ,S), 1)
 	#
 	return p_norm(ρₚ.-ρₒ,n_ints(S),p)
@@ -278,7 +276,7 @@ end
 function findEcolPars(qₚ,Δ)
   #
   # qₚ is a vector containing the proposed ecol pars
-  # qₚ = cat( w, U, dims=1)
+  # qₚ = cat( λ, U, dims=1)
   #
   # Δ is a tuple containing observed data
   # Δ[1][:,1] = [ x[1], ...,x[S]  ]
@@ -288,7 +286,7 @@ function findEcolPars(qₚ,Δ)
   #
   S = convert(Int64, length(qₚ)/2)
   #
-  w  = qₚ[(0+1):(1*S)]
+  λ  = qₚ[(0+1):(1*S)]
   U  = qₚ[(S+1):(2*S)]
   #
   x̄  = Δ[1][:,1]
@@ -296,7 +294,7 @@ function findEcolPars(qₚ,Δ)
   s  = Δ[1][:,3]
   #
   ρₒ = Δ[2]
-  ρₚ = rf_ρ(x̄,σ²,s,U,w)
+  ρₚ = rf_ρ(x̄,σ²,s,U,λ)
   ρₚ = LinearAlgebra.normalize( vect_ρ(ρₚ,S), 1 )
   #
   return Dₖₗ(ρₒ,ρₚ,S)
@@ -306,13 +304,13 @@ end
 function equilibrium(Δ,p)
 
 	@unpack x̄, G, N = Δ
-	@unpack S, w, c, η, r, a, μ, v = p
+	@unpack S, λ, c, E, r, a, μ, v = p
 	val1 = 0.0
 	val2 = 0.0
 
 	for i in 1:S
 
-		b = 1/(2.0*w[i]+2.0*G[i]+2.0*η[i]*N[i])
+		b = 1/(2.0*λ[i]+2.0*G[i]+2.0*E[i]*N[i])
 		val1 += r[i] + c[i]*sqrt(b/(2.0*π)) - a[i]*G[i]/2.0
 		val2 += μ[i] - a[i]*G[i]^2 -v[i]^2*G[i]/N[i]
 		subval1 = 0.0
@@ -320,7 +318,7 @@ function equilibrium(Δ,p)
 
 		for j in 1:S
 
-			b = 1 / ( w[i] + G[i] + η[i] + w[j] + G[j] + η[j] )
+			b = 1 / ( λ[i] + G[i] + E[i] + λ[j] + G[j] + E[j] )
 			subval1 += N[j]*sqrt(b/(2*π))
  			subval2 += N[j]*b*sqrt(b/(2*π))
 		end
@@ -339,7 +337,7 @@ end
 
 function alpha(sol,pars)
 
-	@unpack S, w, U, η, c, a, μ, V, R, θ, Ω = pars
+	@unpack S, λ, U, E, c, a, μ, V, R, θ, Ω = pars
 
 	x̄ = sol[(0*S+1):(1*S)]
 	G = sol[(1*S+1):(2*S)]
@@ -349,7 +347,7 @@ function alpha(sol,pars)
 
 	for i in 1:S
 		for j in 1:S
-			b = 1 / ( w[i] + w[j] + G[i] + G[j] + η[i] + η[j] )
+			b = 1 / ( λ[i] + λ[j] + G[i] + G[j] + E[i] + E[j] )
 			α[i,j] = c[i] * √(b/(2*π)) * exp(-b*(x̄[i]-x̄[j])^2/2)
 		end
 	end
@@ -360,7 +358,7 @@ end
 
 function beta(sol,pars)
 
-	@unpack S, w, U, η, c, a, μ, V, R, θ, Ω = pars
+	@unpack S, λ, U, E, c, a, μ, V, R, θ, Ω = pars
 
 	x̄ = sol[(0*S+1):(1*S)]
 	G = sol[(1*S+1):(2*S)]
@@ -370,7 +368,7 @@ function beta(sol,pars)
 
 	for i in 1:S
 		for j in 1:S
-			b = 1 / ( w[i] + w[j] + G[i] + G[j] + η[i] + η[j] )
+			b = 1 / ( λ[i] + λ[j] + G[i] + G[j] + E[i] + E[j] )
 			β[i,j] = c[i] * N[j] * b * (x̄[i]-x̄[j]) * √(b/(2*π)) * exp(-b*(x̄[i]-x̄[j])^2/2)
 		end
 	end
@@ -381,7 +379,7 @@ end
 
 function gamma(sol,pars)
 
-	@unpack S, w, U, η, c, a, μ, V, R, θ, Ω = pars
+	@unpack S, λ, U, E, c, a, μ, V, R, θ, Ω = pars
 
 	x̄ = sol[(0*S+1):(1*S)]
 	G = sol[(1*S+1):(2*S)]
@@ -391,7 +389,7 @@ function gamma(sol,pars)
 
 	for i in 1:S
 		for j in 1:S
-			b = 1 / ( w[i] + w[j] + G[i] + G[j] + η[i] + η[j] )
+			b = 1 / ( λ[i] + λ[j] + G[i] + G[j] + E[i] + E[j] )
 			γ[i,j] = c[i] * N[j] * b * ( 1 - b*(x̄[i]-x̄[j])^2 ) * √(b/(2*π)) * exp(-b*(x̄[i]-x̄[j])^2/2)
 		end
 	end

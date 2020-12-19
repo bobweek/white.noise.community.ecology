@@ -31,11 +31,11 @@ include("/home/bb/Gits/white.noise.community.ecology/ibm_functions_structs.jl")
 
 # parameter values
 S = 5
-w = fill(0.1, S)  # niche breadths
+λ = fill(0.1, S)  # niche breadths
 U = fill(1.0, S)  # total niche use
 c = fill(1e-5,S) # strengths of competition
 Ω = sum(U)        # niche use scaling
-η = fill(1e-3, S) # environmental variances
+E = fill(1e-3, S) # environmental variances
 μ = fill(1e-5, S) # mutation rates
 V = fill(2.0, S)  # magnitudes of drift
 R = fill(0.1, S)  # innate rate of growth
@@ -72,7 +72,7 @@ end
 
 # set up initial population
 X = community(S=S, x=x₀, g=g₀, N=N₀, n=n, x̄=mean.(x₀), σ²=var.(x₀),
-	G=var.(g₀), R=R, a=a, θ=θ, c=c, w=w, U=U, η=η, μ=μ, V=V)
+	G=var.(g₀), R=R, a=a, θ=θ, c=c, w=w, U=U, E=E, μ=μ, V=V)
 
 # always a good idea to inspect a single iteration
 rescaled_lower(X)

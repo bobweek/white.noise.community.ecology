@@ -24,14 +24,14 @@ for i in 1:S
 	end
 end
 Ω = sum(U); # niche use scaling
-η = fill(1.0, S);  # segregation variances
+E = fill(1.0, S);  # segregation variances
 μ = fill(1e-1, S); # mutation rates
 V = fill(1.0, S);  # magnitudes of drift
 R = fill(0.1, S); # innate rate of growth
 a = fill(1e-3,S);       # strengths of abiotic selection
 θ = fill(0.0, S);  # phenotypic optima
 
-pars = ModelParameters(S=S, w=w, U=U, η=η, c=c, a=a, μ=μ, V=V, R=R, θ=θ, Ω=Ω);
+pars = ModelParameters(S=S, w=w, U=U, E=E, c=c, a=a, μ=μ, V=V, R=R, θ=θ, Ω=Ω);
 
 #
 # find deterministic equilibrium

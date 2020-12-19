@@ -29,10 +29,10 @@ include("/home/bb/Gits/white.noise.community.ecology/ibm_functions_structs.jl")
 ########################################################
 
 # parameter values
-w = 0.1  # niche breadths
+λ = 0.1  # niche breadths
 U = 1.0  # total niche use
 c = 2e-3 # strengths of competition
-η = 1e-5 # environmental variances
+E = 1e-5 # environmental variances
 μ = 1e-3 # mutation rates
 V = 2.0  # magnitudes of drift
 r = 1.0  # innate rate of growth
@@ -40,65 +40,70 @@ a = 1e-2 # strengths of abiotic selection
 θ = 0.0  # phenotypic optima
 n = 1.0  # scaling parameter
 
-##
-## VERY IMPORTANT REQUIREMENT   -->  V >= exp(r)
-##
-## this inequality must be satisfied to use negative binomial sampling
-##
-
 # initial abundance
-N₀ = Int64(floor( n*( r -0.5*( η*a + √(μ*a) ) )/c ) )
+N₀ = Int64(floor( n*( r -0.5*( E*a + √(μ*a) ) )/c ) )
 # here we set this to the equilibrium abundance
 
 # initial breeding values
-g₀ = rand(Normal(0.0,1.0),N₀)
+g₀ = rand(Normal(0.0,1.0),N₀);
 
 # initial trait values
-ηₘ = √η*Matrix(I, N₀, N₀)
-x₀ = vec(rand(MvNormal(g₀,ηₘ),1))
+Eₘ = √E*Matrix(I, N₀, N₀);
+x₀ = vec(rand(MvNormal(g₀,Eₘ),1));
+
+# initial lifetimes
+LT₀ = [rand(Exponential(1/n),N₀)];
 
 # set up initial population
-X = community(S=1, x=fill(x₀,1), g=fill(g₀,1), N=fill(N₀,1), n=fill(n,1),
-	x̄=mean.(fill(x₀,1)), σ²=var.(fill(x₀,1)), G=var.(fill(g₀,1)),
-	R=fill(r,1), a=fill(a,1), θ=fill(θ,1), c=fill(c,1), w=fill(w,1),
-	U=fill(U,1), η=fill(η,1), μ=fill(μ,1), V=fill(V,1) )
+X = community(S=1, x=fill(x₀,1), g=fill(g₀,1), N=fill(N₀,1), n=fill(n,1),x̄=mean.(fill(x₀,1)), σ²=var.(fill(x₀,1)), G=var.(fill(g₀,1)),
+	R=fill(r,1), a=fill(a,1), θ=fill(θ,1), c=fill(c,1), λ=fill(λ,1),U=fill(U,1), E=fill(E,1), μ=fill(μ,1), V=fill(V,1), LT=LT₀ )
 
 # always a good idea to inspect a single iteration
-rescaled_lower(X)
+cont_single_indep(X)
 
-# number of generations to halt at
-T = 50
+minimum(X.LT[1])
+
+CLK = minimum(LT₀[1]) # keeps track of simulation time	
+
+DURATION = 1 # length of time to simulate for
+
+# so we'll run until CLK > DURATION
 
 # set up history of population
-Xₕ = fill(X,T)
+Xₕ = [X];
 
 # simulate
-for i in 2:T
+i = 1
+while CLK < DURATION
 
-	if prod( log.( 1 .+ Xₕ[i-1].N ) ) > 0
+	if prod( log.( 1 .+ Xₕ[i].N ) ) > 0
 
-		Xₕ[i] = rescaled_lower(Xₕ[i-1])
+		append!(Xₕ, [cont_single_indep(Xₕ[i])] )
+
+		CLK = minimum( Xₕ[i].LT[1][1:Xₕ[i].N[1]] )
 
 	else
 
-		Xₕ[i] = Xₕ[i-1]
+		CLK = DURATION
 
 	end
+
+	i+=1
 
 end
 
 # set up containers for paths of N, x̄ and σ²
-Nₕ = zeros(1,T)
-x̄ₕ = zeros(1,T)
-σ²ₕ= zeros(1,T)
-Gₕ = zeros(1,T)
+Nₕ = zeros(1,length(Xₕ))
+x̄ₕ = zeros(1,length(Xₕ))
+σ²ₕ= zeros(1,length(Xₕ))
+Gₕ = zeros(1,length(Xₕ))
 
 # container for individuals
 #individualₕ = zeros(2)
 
 # fill them in
 for i in 1:1
-	for j in 1:T
+	for j in 1:length(Xₕ)
 		Nₕ[i,j] =Xₕ[j].N[i]
 		x̄ₕ[i,j] =Xₕ[j].x̄[i]
 		σ²ₕ[i,j]=Xₕ[j].σ²[i]
@@ -107,7 +112,7 @@ for i in 1:1
 end
 
 # rescaled time
-resc_time = (1:T)./n
+resc_time = (1:length(Xₕ))./n
 
 # total number of individuals across entire simulation
 total_inds = Int64(sum(Nₕ[1,:]))
@@ -116,22 +121,26 @@ total_inds = Int64(sum(Nₕ[1,:]))
 inds = zeros(2,total_inds)
 
 ind = 0
-for i in 1:T
+for i in 1:length(Xₕ)
 	for j in 1:Int64(Nₕ[1,i])
 
 		global ind += 1
-		inds[1,ind] = resc_time[i]
+		inds[1,ind] = Xₕ[i].LT[1][j]
 		inds[2,ind] = Xₕ[i].x[1][j]
 
 	end
 end
 
-scatter(inds[1,:], inds[2,:], legend=false, ms=.5, c=:black)
+# as is scatter will show a discrete-time plot
+# need to map x to LT for cont-time plot
+scatter(inds[1,:], inds[2,:], legend=false, ms=.5, c=:black, xrange=[0,DURATION])
+
+plot!([inds[1,4]-0.1,inds[1,4]],[inds[2,4],inds[2,4]])
 
 # build dataframe
-df = DataFrame(x = inds[2,:], time = inds[1,:])
+# df = DataFrame(x = inds[2,:], time = inds[1,:])
 
-CSV.write("/home/bob/Research/Branching Brownian Motion/n_3.csv", df)
+# CSV.write("/home/bob/Research/Branching Brownian Motion/n_3.csv", df)
 
 plot(resc_time,Nₕ[1,:]./n)
 plot(resc_time,x̄ₕ[1,:]./√n)

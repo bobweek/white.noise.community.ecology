@@ -11,24 +11,10 @@
 
 # data type that holds population and parameters
 
-@with_kw mutable struct population
-    x::Vector{Float64}  # trait values
-    LT::Vector{Float64} # life times (drawn iid from Exp(1) distr)
-    N::Int64            # poulation size
-    x̄::Float64          # mean trait
-    σ²::Float64         # phenotypic variance
-    R::Float64          # innate rate of growth
-    a::Float64          # strength of abiotic selection
-    θ::Float64          # abiotic optimum
-    c::Float64          # strength of competition
-    μ::Float64          # rate of diffusion (mutation)
-    V::Float64          # variance in reproductive output
-end
-
 @with_kw mutable struct community
     S::Int64                   # number of species
     x::Vector{Vector{Float64}} # trait values
-    LT::Vector{Float64}        # life times (drawn iid from Exp(1) distr)
+    LT::Vector{Vector{Float64}}        # life times (drawn iid from Exp(1) distr)
     g::Vector{Vector{Float64}} # breeding values
     N::Vector{Int64}           # population sizes
     n::Vector{Int64}           # index of rescaling
@@ -41,7 +27,7 @@ end
     c::Vector{Float64}         # strengths of competition
     λ::Vector{Float64}         # individual niche widths
     U::Vector{Float64}         # total niche uses
-    η::Vector{Float64}         # segregation variance
+    E::Vector{Float64}         # segregation variance
     μ::Vector{Float64}         # rates of diffusion (mutation)
     V::Vector{Float64}         # variances in reproductive output
 end
@@ -66,7 +52,7 @@ end
 # update for single species
 function disc_single_indep(X)
 
-    @unpack S, x, g, N, n, x̄, σ², G, R, a, θ, c, λ, U, η, μ, V = X
+    @unpack S, x, g, N, n, x̄, σ², G, R, a, θ, c, λ, U, E, μ, V = X
 
     #
     x̄ₚ = fill(0.0,S)
@@ -93,12 +79,8 @@ function disc_single_indep(X)
 
             w̄ = exp( ( R[i] - (a[i]*(θ[i]-x[i][j])^2/2.0) - c[i]*N[i]/n[i] ) / n[i] )
 
-            # parameterizing the NegativeBinomial
-            q = w̄/V[i]
-            s = w̄^2/(V[i]-w̄)
-
             # draw random number of offspring
-            w[j] = rand( NegativeBinomial( s, q ), 1)[1]
+            w[j] = rand( Poisson( w̄ ), 1)[1]
 
         end
 
@@ -115,7 +97,7 @@ function disc_single_indep(X)
                 append!( gₚ[i], rand( Normal( g[i][j], √(μ[i]/n[i]) ), 1)[1] )
 
                 # draw random trait value for this individual
-                append!( xₚ[i], rand( Normal( gₚ[i][count], √η[i] ), 1)[1] )
+                append!( xₚ[i], rand( Normal( gₚ[i][count], √E[i] ), 1)[1] )
 
                 count += 1
 
@@ -132,7 +114,7 @@ function disc_single_indep(X)
 
 
     Xₚ = community(S=S,x=xₚ,g=gₚ,N=Nₚ,n=n,x̄=x̄ₚ,σ²=σₚ²,G=Gₚ,R=R,
-        a=a,θ=θ,c=c,λ=λ,U=U,η=η,μ=μ,V=V)
+        a=a,θ=θ,c=c,λ=λ,U=U,E=E,μ=μ,V=V)
 
     return Xₚ
 
@@ -177,12 +159,8 @@ function disc_comm_update(X)
 
             w̄ = exp( R[i] - a[i]*(θ[i]-x[i][j])^2/2.0 - c[i]*B )
 
-            # parameterizing the NegativeBinomial
-            q = w̄/V
-            s = w̄^2/(V-w̄)
-
             # draw random number of offspring
-            w[j] = rand( NegativeBinomial( s, q ), 1)[1]
+            w[j] = rand( Poisson( w̄ ), 1)[1]
 
         end
 
@@ -261,12 +239,8 @@ function rescaled_update(X)
 
             w̄ = exp( R[i] - a[i]*(θ[i]-x[i,j])^2/2.0 - c[i]*B )
 
-            # parameterizing the NegativeBinomial
-            q = w̄/V
-            s = w̄^2/(V-w̄)
-
             # draw random number of offspring
-            w[j] = rand( NegativeBinomial( s, q ), 1)[1]
+            w[j] = rand( Poisson( w̄ ), 1)[1]
 
         end
 
@@ -310,7 +284,7 @@ end
 # using lower bound on fitness
 function update_lower(X)
 
-    @unpack S, x, N, x̄, σ², R, a, θ, c, w, U, μ, V = X
+    @unpack S, x, N, x̄, σ², R, a, θ, c, λ, U, μ, V = X
 
     # creates array of offspring trait values
     # first index is species
@@ -319,7 +293,7 @@ function update_lower(X)
 
     for i in 1:S
 
-        W = fill(0,N[i])
+        w = fill(0,N[i])
 
         for j in 1:N[i]
 
@@ -333,25 +307,21 @@ function update_lower(X)
             # collect effects of competition with other individuals
             # within the same population
             for k in filter(x -> x≠j, 1:N[i])
-                B += U[i]^2*exp( (x[i,j] - x[i,k])^2 / (4*w[i]) ) / √(4*π*w[i])
+                B += U[i]^2*exp( (x[i,j] - x[i,k])^2 / (4*λ[i]) ) / √(4*π*λ[i])
             end
 
             # collect effects of competition with other individuals
             # in other populations
             for k in filter(x -> x≠i, 1:S)
                 for l in 1:N[k]
-                    B += U[i]*U[k]*exp( (x[i,j] - x[k,l])^2 / (2*(w[i]+w[k])) ) / √(2*π*(w[i]+w[k]))
+                    B += U[i]*U[k]*exp( (x[i,j] - x[k,l])^2 / (2*(λ[i]+λ[k])) ) / √(2*π*(λ[i]+λ[k]))
                 end
             end
 
-            w = exp( R[i] - a[i]*(θ[i]-x[i,j])^2/2.0 - c[i]*B )
-
-            # parameterizing the NegativeBinomial
-            q = w/V
-            s = w^2/(V-w)
+            w̄ = exp( R[i] - a[i]*(θ[i]-x[i,j])^2/2.0 - c[i]*B )
 
             # draw random number of offspring
-            W[j] = rand( NegativeBinomial( s, q ), 1)[1]
+            w[j] = rand( Poisson( w̄ ), 1)[1]
 
         end
 
@@ -368,7 +338,7 @@ function update_lower(X)
         for j in 1:N[i]
 
             # birth each offspring
-            for k in 1:W[j]
+            for k in 1:w[j]
 
                 # consider next individual
                 ct += 1
@@ -404,74 +374,71 @@ end
 # update for single species
 function cont_single_indep(X)
 
-    @unpack S, x, g, N, n, x̄, σ², G, R, a, θ, c, λ, U, η, μ, V = X
+    @unpack S, x, g, N, n, x̄, σ², G, R, a, θ, c, λ, U, E, μ, V, LT = X
 
-    #
+    # containers for new trait mean, var, add gen var and pop size
     x̄ₚ = fill(0.0,S)
     σₚ²= fill(0.0,S)
     Gₚ = fill(0.0,S)
-    Nₚ = fill(0.0,S)
+    Nₚ = fill(0,S)
 
     # creates array of offspring
     # breeding and trait values
     # first index is species
     # second index is individual
-    gₚ = fill(zeros(0),S)
-    xₚ = fill(zeros(0),S)
+    gₚ = deepcopy(g)
+    xₚ = deepcopy(x)
+    LTₚ = deepcopy(LT)
 
     for i in 1:S
 
-        w = fill(0,N[i])
+        j = argmin(LT[i][1:N[i]])
+        
+        #
+        # mean fitness of individual j in species i
+        #
 
-        for j in 1:N[i]
+        w̄ = exp( ( R[i] - (a[i]*(θ[i]-x[i][j])^2/2.0) - c[i]*N[i]/n[i] ) / n[i] )
 
-            #
-            # mean fitness of individual j in species i
-            #
+        # draw random number of offspring
+        w = rand( Poisson( w̄ ), 1)[1]
 
-            w̄ = exp( ( R[i] - (a[i]*(θ[i]-x[i][j])^2/2.0) - c[i]*N[i]/n[i] ) / n[i] )
+        Nₚ[i] = N[i] + w - 1
 
-            # parameterizing the NegativeBinomial
-            q = w̄/V[i]
-            s = w̄^2/(V[i]-w̄)
-
-            # draw random number of offspring
-            w[j] = rand( NegativeBinomial( s, q ), 1)[1]
-
-        end
-
-        # tracks the current offspring
-        count = Int64(1)
-
-        # loop through parents
-        for j in 1:N[i]
-
-            # birth each offspring
-            for k in 1:w[j]
-
-                # draw random breeding value for this individual
-                append!( gₚ[i], rand( Normal( g[i][j], √(μ[i]/n[i]) ), 1)[1] )
-
-                # draw random trait value for this individual
-                append!( xₚ[i], rand( Normal( gₚ[i][count], √η[i] ), 1)[1] )
-
-                count += 1
-
+        if w==0
+            for k = (j+1):S
+                gₚ[i][k-1] = gₚ[i][k]
+                xₚ[i][k-1] = xₚ[i][k]
+                LTₚ[i][k-1] = LTₚ[i][k]
             end
-
         end
 
-        x̄ₚ[i] = mean(xₚ[i])
-        σₚ²[i]= var(xₚ[i])
-        Gₚ[i] = var(gₚ[i])
-        Nₚ[i] = sum(w)
+        if w>0 # at least one bb, then replace parent
+            # draw random breeding value for this individual
+            gₚ[i][j] = rand( Normal( g[i][j], √(μ[i]/n[i]) ), 1)[1]
 
+            # draw random trait value for this individual
+            xₚ[i][j] = rand( Normal(gₚ[i][j],√E[i]), 1)[1]
+            LTₚ[i][j] += rand( Exponential(1/n[i]), 1)[1]
+        end
+
+        if w>1
+            append!( gₚ[i], rand( Normal( g[i][j], √(μ[i]/n[i]) ), w-1) )
+            Eₘ = √E[i]*Matrix(I, w-1, w-1)
+            momi = fill(gₚ[i][j], w-1)
+            x₀ = vec(rand(MvNormal( momi, Eₘ),1))
+            append!( xₚ[i], x₀ )
+            append!( LTₚ[i], LT[i][j] .+ rand(Exponential(1/n[i]), w-1) ) 
+        end
+
+        x̄ₚ[i] = mean(xₚ[i][1:Nₚ[i]])
+        σₚ²[i]= var(xₚ[i][1:Nₚ[i]])
+        Gₚ[i] = var(gₚ[i][1:Nₚ[i]])
+    
     end
 
-
-    Xₚ = community(S=S,x=xₚ,g=gₚ,N=Nₚ,n=n,x̄=x̄ₚ,σ²=σₚ²,G=Gₚ,R=R,
-        a=a,θ=θ,c=c,λ=λ,U=U,η=η,μ=μ,V=V)
-
+    Xₚ = community(S=S,x=xₚ,g=gₚ,N=Nₚ,n=n,x̄=x̄ₚ,σ²=σₚ²,G=Gₚ,R=R,a=a,θ=θ,c=c,λ=λ,U=U,E=E,μ=μ,V=V,LT=LTₚ)
+    
     return Xₚ
 
 end
@@ -515,12 +482,8 @@ function cont_comm_update(X)
 
             w̄ = exp( R[i] - a[i]*(θ[i]-x[i][j])^2/2.0 - c[i]*B )
 
-            # parameterizing the NegativeBinomial
-            q = w̄/V
-            s = w̄^2/(V-w̄)
-
             # draw random number of offspring
-            w[j] = rand( NegativeBinomial( s, q ), 1)[1]
+            w[j] = rand( Poisson( w̄ ), 1)[1]
 
         end
 
