@@ -75,9 +75,19 @@ function fsde(u,p,t)
   dG = zeros(S)
   dN = zeros(S)
 
+  # set any negative G's and N's to zero
+  for i in 1:S
+    if G[i] < 0.0
+      G[i] = 0.0
+    end
+    if N[i] < 0.0
+      N[i] = 0.0
+    end
+  end
+
   # sensitivity composite-parameters
   b = zeros(S,S)
-  for i = 1:S
+  for i = 1:S    
     for j = 1:S
       b[i,j] = 1.0 / ( λ[i] + λ[j] + G[i] + G[j] + E[i] + E[j] )
     end
@@ -98,9 +108,9 @@ function fsde(u,p,t)
     for j = 1:S
       Bg += c[i,j] * N[j] * U[i] * U[j] * b[i,j] * (1.0 - b[i,j] * ( x[i]-x[j] )^2) * √( b[i,j] / (2.0*π) ) * exp( -b[i,j] * ( x[i]-x[j] )^2 / 2.0 )
     end
-	  Bg -= 0.5*c[i,i] * N[i] * U[i]^2 * b[i,i] * √(b[i,i]/(2.0*π))
+	  Bg -= 0.5 * c[i,i] * N[i] * U[i]^2 * b[i,i] * √(b[i,i]/(2.0*π))
 
-    dG[i] = μ[i] + ( Bg - a[i] ) * G[i]^2 - V[i] * G[i] / N[i]
+    dG[i] = μ[i] + ( Bg - a[i] ) * G[i]^2 - V[i] * G[i] / (N[i] + 1.0)
 
     # accumulate effects on abundance
     Bₙ = 0.0
@@ -125,7 +135,7 @@ function gsde(u,p,t)
 
 
   # unpack model parameters
-  @unpack S, λ, U, E, c, a, μ, V, R, θ = p
+  @unpack S, V = p
 
   # unpack model variables
   x = u[(0*S+1):(1*S)] # mean traits
@@ -139,17 +149,17 @@ function gsde(u,p,t)
 
   for i = 1:S
 
-    if N[i] > 0.0 && G[i] > 0.0
+    if (N[i] > 0.0) && (G[i] > 0.0)
       dN[i] = √( V[i] * N[i] )
       dx[i] = √( V[i] * G[i] / (N[i]+1.0) )
       dG[i] = G[i] * √( 2.0 * V[i] / (N[i]+1.0) )
     elseif N[i] < 0.0
-      N[i] = 0.0
+      dN[i] = 0.0
     elseif G[i] < 0.0
-      G[i] = 0.0
-    else N[i] < 0.0 && G[i] < 0.0
-      N[i] = 0.0
-      G[i] = 0.0
+      dG[i] = 0.0
+    else (N[i] < 0.0) && (G[i] < 0.0)
+      dN[i] = 0.0
+      dG[i] = 0.0
     end
 
   end

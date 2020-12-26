@@ -12,7 +12,8 @@
 ########################################################################################
 
 # load in some libraries
-using StochasticDiffEq, DifferentialEquations, 
+using StochasticDiffEq, 
+    DifferentialEquations, 
     LinearAlgebra, 
     Plots, 
     Parameters, 
